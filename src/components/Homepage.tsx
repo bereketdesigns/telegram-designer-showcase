@@ -1,28 +1,33 @@
-// This component will be populated in Part 3: Homepage & Designer Profiles
 import React from 'react';
-
-interface DesignerProfile { // Define the interface for a designer profile, matching Supabase table
-  id: string;
-  telegram_id: number;
-  telegram_first_name: string;
-  telegram_last_name?: string;
-  telegram_username?: string;
-  portfolio_link: string;
-  bio: string;
-  skills: string[];
-  profile_image_url?: string;
-  created_at: string;
-}
+// Import DesignerProfile interface from WebAppRouter for consistency.
+// WebAppRouter.tsx will be created in the next step, so this import might
+// show a temporary error until that file is populated. That's expected.
+import { DesignerProfile } from './common/WebAppRouter';
 
 interface HomepageProps {
-  currentUserProfile?: DesignerProfile | null;
+  currentUserProfile?: DesignerProfile | null; // Profile of the logged-in user, if exists
 }
 
-const Homepage: React.FC<HomepageProps> = () => {
+const Homepage: React.FC<HomepageProps> = ({ currentUserProfile }) => {
   return (
-    <div className="p-4 text-center bg-gray-50 min-h-screen flex flex-col justify-center items-center">
-      <h1 className="text-2xl font-bold">Homepage Loading...</h1>
-      <p>Profiles will appear here.</p>
+    <div className="p-4 bg-gray-50 min-h-screen flex flex-col items-center justify-center">
+      <h1 className="text-3xl font-bold text-gray-800 mb-4">Designer Showcase</h1>
+      {currentUserProfile ? (
+        <p className="text-lg text-gray-700 text-center">
+          Welcome back, {currentUserProfile.telegram_first_name}!
+          <br />
+          (Your profile will be shown here along with others in Part 3)
+        </p>
+      ) : (
+        <p className="text-lg text-gray-700 text-center">
+          Loading designers...
+          <br />
+          (This is the homepage for all profiles, loading will be implemented in Part 3)
+        </p>
+      )}
+      <p className="mt-8 text-gray-500 text-center">
+        If you're new, you'll see a signup page first.
+      </p>
     </div>
   );
 };

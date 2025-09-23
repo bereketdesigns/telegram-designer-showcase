@@ -1,14 +1,4 @@
 ---
-// The WebAppProvider moved! We now import the client-side logic to ensure it's
-// initialized correctly, but the React provider is typically handled within
-// the client-side React root component itself, or its specific name has changed.
-// Let's explicitly import the WebApp component which provides context implicitly.
-// If this still fails, we might need to use a direct <script> tag for WebApp.init()
-// and then provide a custom React context.
-// For now, let's try a direct import of WebApp which often auto-initializes.
-import { useWebApp } from '@telegram-apps/sdk-react'; // We will use this in the React component directly
-                                                      // and might not need an Astro-level provider.
-
 interface Props {
   title: string;
 }
@@ -25,14 +15,8 @@ const { title } = Astro.props;
     <link rel="stylesheet" href="/src/styles/global.css" />
   </head>
   <body>
-    {/*
-      REMOVED: <WebAppProvider>
-      The direct WebAppProvider export seems to have been removed or renamed.
-      For now, we will assume the SDK initializes itself implicitly or we
-      will handle the context within our React entry point (WebAppRouter.tsx).
-      Astro pages primarily handle server-side rendering, and the client-side
-      SDK initialization is better suited for the React component lifecycle.
-    */}
-    <slot /> {/* This is where page content will be injected */}
+    
+      <slot />
+    </WebAppProvider>
   </body>
 </html>

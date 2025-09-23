@@ -1,10 +1,10 @@
-// This component will be populated in Part 2: Authentication & User Flow
 import React from 'react';
 
 const LoadingSpinner: React.FC = () => {
   return (
     <div className="flex flex-col justify-center items-center h-screen bg-gray-50">
-      <p className="text-gray-700 text-lg">Loading...</p>
+      <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+      <p className="ml-4 text-gray-700 mt-4 text-lg">Loading Telegram Mini App...</p>
     </div>
   );
 };

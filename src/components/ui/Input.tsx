@@ -1,4 +1,3 @@
-// This component will be populated in Part 2: Authentication & User Flow
 import React from 'react';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -8,7 +7,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 const Input: React.FC<InputProps> = ({ className, ...props }) => {
   return (
     <input
-      className={`mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-gray-900 ${className}`}
+      className={`mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${className}`}
       {...props}
     />
   );

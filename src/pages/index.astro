@@ -1,17 +1,8 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-// Even though WebAppRouter is just a placeholder here, we include it
-// because this is where it will eventually live.
-import WebAppRouter from '../components/common/WebAppRouter.tsx';
+import WebAppRouter from '../components/common/WebAppRouter.tsx'; // Import the React component
 ---
-<BaseLayout title="Designer Showcase Mini App">
-  <main class="p-4 text-center min-h-screen flex flex-col justify-center items-center bg-gray-100 text-gray-800">
-    <h1 class="text-4xl font-extrabold mb-4">Hello from Telegram Mini App!</h1>
-    <p class="text-lg">Your Astro project with Telegram SDK is ready.</p>
-    <p class="text-md mt-2">Let's build something awesome!</p>
-    {/*
-      In Part 2, this will change to <WebAppRouter client:load /> to kickstart our React app.
-      For Part 1 "Hello World", we're just showing static content.
-    */}
-  </main>
+<BaseLayout title="Designer Profiles">
+  {/* Render the React router, client:load is crucial for hydration and client-side logic */}
+  <WebAppRouter client:load />
 </BaseLayout>
