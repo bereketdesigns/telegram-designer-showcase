@@ -1,13 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Ensure these environment variables are defined in your .env file and Vercel settings
-const supabaseUrl = import.meta.env.SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.SUPABASE_ANON_KEY;
+// Access environment variables with the PUBLIC_ prefix for client-side access
+const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Supabase URL or Anon Key is missing. Check .env file and Vercel Environment Variables.');
-  // In a real production app, you might want to throw an error or handle this more gracefully.
-  // For now, logging to console is sufficient.
+  // For the client-side app, if these are missing, it's a critical error
+  // that prevents Supabase from initializing.
+  // We will let the app show an error, but this helps catch it early.
+  throw new Error('Supabase URL and Anon Key are required for the application to function.');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
