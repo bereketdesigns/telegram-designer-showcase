@@ -1,27 +1,10 @@
 import React, { useEffect, useState } from 'react';
-// REMOVED: import { useWebApp } from '@telegram-apps/sdk-react';
 import { supabase } from '../../api/supabaseClient';
 import Homepage from '../Homepage';
 import SignupPage from '../SignupPage';
 import LoadingSpinner from './LoadingSpinner';
 
-// Define the interface for a designer profile, matching Supabase table
-export interface DesignerProfile {
-  id: string; // Supabase UUID
-  telegram_id: number;
-  telegram_first_name: string;
-  telegram_last_name?: string;
-  telegram_username?: string;
-  portfolio_link: string;
-  bio: string;
-  skills: string[];
-  profile_image_url?: string;
-  created_at: string;
-}
-
 // --- Local Type Definitions for Telegram WebApp ---
-// We put these here because global declarations are proving problematic.
-// This ensures TypeScript knows about Telegram.WebApp structure within this file.
 interface TelegramUser {
   id: number;
   first_name: string;
@@ -98,15 +81,29 @@ interface TelegramWindow extends Window {
 }
 // --- End Local Type Definitions ---
 
+// Define the interface for a designer profile, matching Supabase table
+export interface DesignerProfile { // This was missing and caused a warning in Homepage.tsx
+  id: string; // Supabase UUID
+  telegram_id: number;
+  telegram_first_name: string;
+  telegram_last_name?: string;
+  telegram_username?: string;
+  portfolio_link: string;
+  bio: string;
+  skills: string[];
+  profile_image_url?: string;
+  created_at: string;
+}
+
+
 const WebAppRouter: React.FC = () => {
-  // Use type assertion to tell TypeScript that window might have Telegram.WebApp
-  // This bypasses global type declaration issues if tsconfig isn't picking them up.
-  const webApp = (window as TelegramWindow).Telegram?.WebApp;
+  // Safely access window.Telegram?.WebApp only if window is defined (i.e., in a browser)
+  const webApp = typeof window !== 'undefined' ? (window as TelegramWindow).Telegram?.WebApp : undefined;
 
   const [isLoading, setIsLoading] = useState(true);
   const [isNewUser, setIsNewUser] = useState(false);
   const [currentUserProfile, setCurrentUserProfile] = useState<DesignerProfile | null>(null);
-  const [telegramUserData, setTelegramUserData] = useState<TelegramUser | null>(null); // Use TelegramUser interface
+  const [telegramUserData, setTelegramUserData] = useState<TelegramUser | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -120,7 +117,7 @@ const WebAppRouter: React.FC = () => {
       }
 
       const user = webApp.initDataUnsafe.user;
-      setTelegramUserData(user); // Store Telegram user data
+      setTelegramUserData(user);
       const telegramId = user.id;
 
       try {
@@ -129,36 +126,32 @@ const WebAppRouter: React.FC = () => {
           .from('designers')
           .select('*')
           .eq('telegram_id', telegramId)
-          .single(); // Use single() to expect one row or null
+          .single();
 
-        if (error && error.code === 'PGRST116') { // Supabase error code for "No rows found"
-          // User not found, so they are a new user
+        if (error && error.code === 'PGRST116') {
           setIsNewUser(true);
         } else if (error) {
           console.error('Error fetching user profile from Supabase:', error);
           setError(`Failed to load profile: ${error.message}`);
-          setIsNewUser(true); // Default to signup if we can't confirm due to error
+          setIsNewUser(true);
         } else if (data) {
-          // User found, they are a returning user
           setCurrentUserProfile(data as DesignerProfile);
         }
       } catch (err) {
         console.error('Supabase client error during user check:', err);
         setError('An unexpected network error occurred during user check.');
-        setIsNewUser(true); // Treat as new user on client error, or show error page
+        setIsNewUser(true);
       } finally {
-        setIsLoading(false); // Stop loading regardless of outcome
+        setIsLoading(false);
       }
     };
 
-    // This effect runs once on mount. We now directly check `window.Telegram?.WebApp`
-    // We'll add a minimal check to delay if webApp isn't immediately available.
+    // Only attempt to check user if webApp is actually defined (i.e., in browser context)
     if (webApp && webApp.initDataUnsafe) {
       checkUser();
-    } else {
-      // Add a small timeout to allow Telegram.WebApp to be injected
+    } else if (typeof window !== 'undefined') { // If window is defined but webApp isn't ready yet,
+                                                // give it a short moment for the Telegram script to inject it.
       const timeout = setTimeout(() => {
-        // Use type assertion here too
         if ((window as TelegramWindow).Telegram?.WebApp?.initDataUnsafe?.user) {
           checkUser();
         } else {
@@ -167,17 +160,23 @@ const WebAppRouter: React.FC = () => {
         }
       }, 1000); // 1 second delay
 
-      return () => clearTimeout(timeout); // Cleanup on unmount
+      return () => clearTimeout(timeout);
+    } else {
+      // If window is not defined (SSR context), we cannot proceed.
+      // The component should gracefully handle this initial server render.
+      // For now, we'll let it stay in loading or show a generic message.
+      setIsLoading(false); // Make sure it eventually stops loading if window isn't present
+      setError("This app must be opened in a browser with Telegram WebApp support.");
     }
 
-  }, [webApp]); // `webApp` dependency ensures effect reacts if `window.Telegram.WebApp` changes (unlikely, but safe)
+  }, [webApp]);
 
   // --- Render Logic ---
   if (isLoading) {
     return <LoadingSpinner />;
   }
 
-  if (error) {
+  if (error && error !== "This app must be opened in a browser with Telegram WebApp support.") {
     return (
       <div className="p-4 bg-gray-50 min-h-screen text-center flex flex-col justify-center items-center">
         <p className="text-red-600 text-lg font-semibold">{error}</p>
@@ -188,7 +187,6 @@ const WebAppRouter: React.FC = () => {
 
   // If we made it here, telegramUserData must exist because of the initial check
   if (isNewUser && telegramUserData) {
-    // Render SignupPage for new users, passing auto-detected Telegram data
     return (
       <SignupPage
         telegramId={telegramUserData.id}
@@ -196,15 +194,23 @@ const WebAppRouter: React.FC = () => {
         telegramLastName={telegramUserData.last_name || ''}
         telegramUsername={telegramUserData.username || ''}
         onSignupSuccess={() => {
-            // On successful signup, we reload the window. This forces WebAppRouter
-            // to re-evaluate the user, now recognizing them as returning.
             window.location.reload();
         }}
       />
     );
   }
+  
+  // If we are here, it means we are a returning user or an error occurred during initialization.
+  // If it's a server-side render without window, show the error.
+  if (error === "This app must be opened in a browser with Telegram WebApp support.") {
+      return (
+        <div className="p-4 bg-gray-50 min-h-screen text-center flex flex-col justify-center items-center">
+            <p className="text-red-600 text-lg font-semibold">{error}</p>
+            <p className="text-gray-500 mt-2">Please launch the app via your Telegram bot.</p>
+        </div>
+      );
+  }
 
-  // Render Homepage for returning users, optionally passing their profile
   return <Homepage currentUserProfile={currentUserProfile} />;
 };
 

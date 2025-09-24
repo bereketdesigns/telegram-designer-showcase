@@ -2,7 +2,7 @@ import React from 'react';
 // Import DesignerProfile interface from WebAppRouter for consistency.
 // WebAppRouter.tsx will be created in the next step, so this import might
 // show a temporary error until that file is populated. That's expected.
-import { DesignerProfile } from './common/WebAppRouter';
+import type{ DesignerProfile } from './common/WebAppRouter';
 
 interface HomepageProps {
   currentUserProfile?: DesignerProfile | null; // Profile of the logged-in user, if exists
