@@ -34,22 +34,22 @@ interface TelegramWebAppInterface {
   version: string;
   platform: string;
   colorScheme: string;
-  themeParams: object; // Simplified for brevity here, can be detailed if needed
+  themeParams: object;
   isExpanded: boolean;
   viewportHeight: number;
   viewportStableHeight: number;
   isClosingConfirmationEnabled: boolean;
   headerColor: string;
   backgroundColor: string;
-  BackButton: object; // Simplified
-  MainButton: object; // Simplified
-  HapticFeedback: object; // Simplified
+  BackButton: object;
+  MainButton: object;
+  hapticFeedback: object; // Lowercase h in hapticFeedback
   isVersionAtLeast: (version: string) => boolean;
   setHeaderColor: (color: string) => void;
   setBackgroundColor: (color: string) => void;
-  showScanQrPopup: (...args: any[]) => void; // Simplified
+  showScanQrPopup: (...args: any[]) => void;
   closeScanQrPopup: () => void;
-  showPopup: (...args: any[]) => void; // Simplified
+  showPopup: (...args: any[]) => void;
   showAlert: (message: string, callback?: () => void) => void;
   showConfirm: (message: string, callback?: (confirmed: boolean) => void) => void;
   ready: () => void;
@@ -82,8 +82,8 @@ interface TelegramWindow extends Window {
 // --- End Local Type Definitions ---
 
 // Define the interface for a designer profile, matching Supabase table
-export interface DesignerProfile { // This was missing and caused a warning in Homepage.tsx
-  id: string; // Supabase UUID
+export interface DesignerProfile {
+  id: string;
   telegram_id: number;
   telegram_first_name: string;
   telegram_last_name?: string;
@@ -97,7 +97,7 @@ export interface DesignerProfile { // This was missing and caused a warning in H
 
 
 const WebAppRouter: React.FC = () => {
-  // Safely access window.Telegram?.WebApp only if window is defined (i.e., in a browser)
+  // Use type assertion to tell TypeScript that window might have Telegram.WebApp
   const webApp = typeof window !== 'undefined' ? (window as TelegramWindow).Telegram?.WebApp : undefined;
 
   const [isLoading, setIsLoading] = useState(true);
@@ -107,69 +107,93 @@ const WebAppRouter: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const checkUser = async () => {
-      // 1. Ensure Telegram WebApp and user data are available
-      if (!webApp || !webApp.initDataUnsafe || !webApp.initDataUnsafe.user) {
-        console.error("Telegram user data is not available. This app must be opened via Telegram.");
-        setError("This app must be opened through Telegram. Please use the bot's menu button.");
-        setIsLoading(false);
-        return;
-      }
+    let isMounted = true; // Flag to prevent state updates on unmounted component
+    let intervalId: NodeJS.Timeout | undefined;
+    let timeoutId: NodeJS.Timeout | undefined;
 
-      const user = webApp.initDataUnsafe.user;
-      setTelegramUserData(user);
-      const telegramId = user.id;
+    const attemptInit = async () => {
+      const currentWebApp = (window as TelegramWindow).Telegram?.WebApp;
+      
+      if (currentWebApp && currentWebApp.initDataUnsafe && currentWebApp.initDataUnsafe.user) {
+        console.log("Telegram WebApp and user data found!");
+        if (!isMounted) return; // Prevent state update if component unmounted
 
-      try {
-        // 2. Try to fetch the user's profile from Supabase
-        const { data, error } = await supabase
-          .from('designers')
-          .select('*')
-          .eq('telegram_id', telegramId)
-          .single();
+        const user = currentWebApp.initDataUnsafe.user;
+        setTelegramUserData(user);
+        const telegramId = user.id;
 
-        if (error && error.code === 'PGRST116') {
+        try {
+          const { data, error: dbError } = await supabase
+            .from('designers')
+            .select('*')
+            .eq('telegram_id', telegramId)
+            .single();
+
+          if (!isMounted) return; // Prevent state update if component unmounted
+
+          if (dbError && dbError.code === 'PGRST116') {
+            setIsNewUser(true);
+          } else if (dbError) {
+            console.error('Error fetching user profile from Supabase:', dbError);
+            setError(`Failed to load profile: ${dbError.message}`);
+            setIsNewUser(true);
+          } else if (data) {
+            setCurrentUserProfile(data as DesignerProfile);
+          }
+        } catch (err) {
+          console.error('Supabase client error during user check:', err);
+          setError('An unexpected network error occurred during user check.');
           setIsNewUser(true);
-        } else if (error) {
-          console.error('Error fetching user profile from Supabase:', error);
-          setError(`Failed to load profile: ${error.message}`);
-          setIsNewUser(true);
-        } else if (data) {
-          setCurrentUserProfile(data as DesignerProfile);
+        } finally {
+          if (isMounted) setIsLoading(false);
         }
-      } catch (err) {
-        console.error('Supabase client error during user check:', err);
-        setError('An unexpected network error occurred during user check.');
-        setIsNewUser(true);
-      } finally {
-        setIsLoading(false);
+      } else if (typeof window !== 'undefined') {
+        console.log("Telegram WebApp or user data not ready yet. Retrying...");
+        // If not ready, and in browser, schedule retry
+        // This path should ideally be hit by the interval, not the initial effect run
+      } else {
+        // Server-side render, window is not defined
+        console.log("Server-side render: window is undefined. Setting initial error.");
+        if (isMounted) {
+            setError("This app must be opened in a browser with Telegram WebApp support.");
+            setIsLoading(false);
+        }
       }
     };
 
-    // Only attempt to check user if webApp is actually defined (i.e., in browser context)
-    if (webApp && webApp.initDataUnsafe) {
-      checkUser();
-    } else if (typeof window !== 'undefined') { // If window is defined but webApp isn't ready yet,
-                                                // give it a short moment for the Telegram script to inject it.
-      const timeout = setTimeout(() => {
-        if ((window as TelegramWindow).Telegram?.WebApp?.initDataUnsafe?.user) {
-          checkUser();
-        } else {
-          setError("Telegram WebApp initialization timed out or user data unavailable. Please try again.");
-          setIsLoading(false);
-        }
-      }, 1000); // 1 second delay
+    if (typeof window !== 'undefined') {
+        // Initial attempt
+        attemptInit();
 
-      return () => clearTimeout(timeout);
+        // Set up a polling interval to check if WebApp becomes available
+        intervalId = setInterval(attemptInit, 500); // Check every 0.5 seconds
+
+        // Set a total timeout after which we give up
+        timeoutId = setTimeout(() => {
+            if (!webApp || !webApp.initDataUnsafe || !webApp.initDataUnsafe.user) {
+                console.error("Timeout reached. WebApp still not ready or user data missing.");
+                if (isMounted) {
+                    setError("Telegram WebApp initialization timed out or user data unavailable. Please try again.");
+                    setIsLoading(false);
+                }
+            }
+        }, 3000); // Increased timeout to 3 seconds
     } else {
-      // If window is not defined (SSR context), we cannot proceed.
-      // The component should gracefully handle this initial server render.
-      // For now, we'll let it stay in loading or show a generic message.
-      setIsLoading(false); // Make sure it eventually stops loading if window isn't present
-      setError("This app must be opened in a browser with Telegram WebApp support.");
+        // Server-side render, handle immediately
+        console.log("Server-side render: window is undefined. Setting initial error.");
+        if (isMounted) {
+            setError("This app must be opened in a browser with Telegram WebApp support.");
+            setIsLoading(false);
+        }
     }
 
-  }, [webApp]);
+
+    return () => {
+      isMounted = false; // Cleanup flag
+      if (intervalId) clearInterval(intervalId);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [webApp]); // `webApp` dependency ensures effect reacts if `window.Telegram.WebApp` changes
 
   // --- Render Logic ---
   if (isLoading) {
@@ -185,7 +209,6 @@ const WebAppRouter: React.FC = () => {
     );
   }
 
-  // If we made it here, telegramUserData must exist because of the initial check
   if (isNewUser && telegramUserData) {
     return (
       <SignupPage
@@ -201,7 +224,7 @@ const WebAppRouter: React.FC = () => {
   }
   
   // If we are here, it means we are a returning user or an error occurred during initialization.
-  // If it's a server-side render without window, show the error.
+  // If it's a server-side render without window, show the initial error.
   if (error === "This app must be opened in a browser with Telegram WebApp support.") {
       return (
         <div className="p-4 bg-gray-50 min-h-screen text-center flex flex-col justify-center items-center">
