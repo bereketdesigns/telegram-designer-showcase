@@ -97,7 +97,9 @@ export interface DesignerProfile {
 
 
 const WebAppRouter: React.FC = () => {
-  // Use type assertion to tell TypeScript that window might have Telegram.WebApp
+  // --- DEEP DEBUG LOG ---
+  console.log("WebAppRouter rendering. Initial window.Telegram:", (window as TelegramWindow).Telegram);
+
   const webApp = typeof window !== 'undefined' ? (window as TelegramWindow).Telegram?.WebApp : undefined;
 
   const [isLoading, setIsLoading] = useState(true);
@@ -107,20 +109,28 @@ const WebAppRouter: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let isMounted = true; // Flag to prevent state updates on unmounted component
+    let isMounted = true;
     let intervalId: NodeJS.Timeout | undefined;
     let timeoutId: NodeJS.Timeout | undefined;
+
+    // --- DEEP DEBUG LOG ---
+    console.log("WebAppRouter useEffect fired. Initial window.Telegram in useEffect:", (window as TelegramWindow).Telegram);
 
     const attemptInit = async () => {
       const currentWebApp = (window as TelegramWindow).Telegram?.WebApp;
       
       if (currentWebApp && currentWebApp.initDataUnsafe && currentWebApp.initDataUnsafe.user) {
-        console.log("Telegram WebApp and user data found!");
-        if (!isMounted) return; // Prevent state update if component unmounted
+        // --- DEEP DEBUG LOG ---
+        console.log("Telegram WebApp and user data found! User:", currentWebApp.initDataUnsafe.user);
+        if (!isMounted) return;
 
         const user = currentWebApp.initDataUnsafe.user;
         setTelegramUserData(user);
         const telegramId = user.id;
+
+        // Clear any pending checks/timeouts once we've successfully initialized
+        if (intervalId) clearInterval(intervalId);
+        if (timeoutId) clearTimeout(timeoutId);
 
         try {
           const { data, error: dbError } = await supabase
@@ -129,7 +139,7 @@ const WebAppRouter: React.FC = () => {
             .eq('telegram_id', telegramId)
             .single();
 
-          if (!isMounted) return; // Prevent state update if component unmounted
+          if (!isMounted) return;
 
           if (dbError && dbError.code === 'PGRST116') {
             setIsNewUser(true);
@@ -148,9 +158,8 @@ const WebAppRouter: React.FC = () => {
           if (isMounted) setIsLoading(false);
         }
       } else if (typeof window !== 'undefined') {
-        console.log("Telegram WebApp or user data not ready yet. Retrying...");
-        // If not ready, and in browser, schedule retry
-        // This path should ideally be hit by the interval, not the initial effect run
+        // --- DEEP DEBUG LOG ---
+        console.log("Telegram WebApp or user data not ready yet. Retrying... window.Telegram:", (window as TelegramWindow).Telegram);
       } else {
         // Server-side render, window is not defined
         console.log("Server-side render: window is undefined. Setting initial error.");
@@ -170,14 +179,14 @@ const WebAppRouter: React.FC = () => {
 
         // Set a total timeout after which we give up
         timeoutId = setTimeout(() => {
-            if (!webApp || !webApp.initDataUnsafe || !webApp.initDataUnsafe.user) {
+            if (!(window as TelegramWindow).Telegram?.WebApp?.initDataUnsafe?.user) { // Check directly if it's still not available
                 console.error("Timeout reached. WebApp still not ready or user data missing.");
                 if (isMounted) {
                     setError("Telegram WebApp initialization timed out or user data unavailable. Please try again.");
                     setIsLoading(false);
                 }
             }
-        }, 3000); // Increased timeout to 3 seconds
+        }, 5000); // Increased timeout to 5 seconds for more robustness
     } else {
         // Server-side render, handle immediately
         console.log("Server-side render: window is undefined. Setting initial error.");
@@ -187,13 +196,12 @@ const WebAppRouter: React.FC = () => {
         }
     }
 
-
     return () => {
-      isMounted = false; // Cleanup flag
+      isMounted = false;
       if (intervalId) clearInterval(intervalId);
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [webApp]); // `webApp` dependency ensures effect reacts if `window.Telegram.WebApp` changes
+  }, []); // Empty dependency array: only run once on mount
 
   // --- Render Logic ---
   if (isLoading) {
@@ -223,8 +231,6 @@ const WebAppRouter: React.FC = () => {
     );
   }
   
-  // If we are here, it means we are a returning user or an error occurred during initialization.
-  // If it's a server-side render without window, show the initial error.
   if (error === "This app must be opened in a browser with Telegram WebApp support.") {
       return (
         <div className="p-4 bg-gray-50 min-h-screen text-center flex flex-col justify-center items-center">
