@@ -98,9 +98,10 @@ export interface DesignerProfile {
 
 const WebAppRouter: React.FC = () => {
   // --- DEEP DEBUG LOG ---
-  console.log("WebAppRouter rendering. Initial window.Telegram:", (window as TelegramWindow).Telegram);
+  console.log("WebAppRouter rendering. Initial window.Telegram:", typeof window !== 'undefined' ? (window as TelegramWindow).Telegram : 'window undefined (SSR)');
 
-  const webApp = typeof window !== 'undefined' ? (window as TelegramWindow).Telegram?.WebApp : undefined;
+  // webApp state will be initialized in useEffect, preventing SSR window access issues
+  const [webApp, setWebApp] = useState<TelegramWebAppInterface | undefined>(undefined);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isNewUser, setIsNewUser] = useState(false);
@@ -114,9 +115,22 @@ const WebAppRouter: React.FC = () => {
     let timeoutId: NodeJS.Timeout | undefined;
 
     // --- DEEP DEBUG LOG ---
-    console.log("WebAppRouter useEffect fired. Initial window.Telegram in useEffect:", (window as TelegramWindow).Telegram);
+    console.log("WebAppRouter useEffect fired. Initial window.Telegram in useEffect:", typeof window !== 'undefined' ? (window as TelegramWindow).Telegram : 'window undefined (SSR)');
 
-    const attemptInit = async () => {
+    // Only proceed if running in a browser environment
+    if (typeof window === 'undefined') {
+        console.log("Server-side render: window is undefined. Setting initial error.");
+        if (isMounted) {
+            setError("This app must be opened in a browser with Telegram WebApp support.");
+            setIsLoading(false);
+        }
+        return; // Exit useEffect if SSR
+    }
+
+    const currentWebAppInstance = (window as TelegramWindow).Telegram?.WebApp;
+    setWebApp(currentWebAppInstance); // Set the webApp instance in state for future renders
+
+    const attemptInit = async (attemptCount: number = 0) => {
       const currentWebApp = (window as TelegramWindow).Telegram?.WebApp;
       
       if (currentWebApp && currentWebApp.initDataUnsafe && currentWebApp.initDataUnsafe.user) {
@@ -157,44 +171,30 @@ const WebAppRouter: React.FC = () => {
         } finally {
           if (isMounted) setIsLoading(false);
         }
-      } else if (typeof window !== 'undefined') {
-        // --- DEEP DEBUG LOG ---
-        console.log("Telegram WebApp or user data not ready yet. Retrying... window.Telegram:", (window as TelegramWindow).Telegram);
       } else {
-        // Server-side render, window is not defined
-        console.log("Server-side render: window is undefined. Setting initial error.");
-        if (isMounted) {
-            setError("This app must be opened in a browser with Telegram WebApp support.");
-            setIsLoading(false);
-        }
+        console.log(`Telegram WebApp or user data not ready yet. Retrying (${attemptCount})... window.Telegram:`, (window as TelegramWindow).Telegram);
+        // If it's not ready yet, the interval will keep calling this.
+        // The timeout will eventually fire if it never becomes ready.
       }
     };
 
-    if (typeof window !== 'undefined') {
-        // Initial attempt
-        attemptInit();
+    // Initial attempt outside of interval to potentially speed up first check
+    attemptInit(0);
 
-        // Set up a polling interval to check if WebApp becomes available
-        intervalId = setInterval(attemptInit, 500); // Check every 0.5 seconds
+    // Set up a polling interval to check if WebApp becomes available
+    intervalId = setInterval(() => attemptInit(1), 500); // Check every 0.5 seconds
 
-        // Set a total timeout after which we give up
-        timeoutId = setTimeout(() => {
-            if (!(window as TelegramWindow).Telegram?.WebApp?.initDataUnsafe?.user) { // Check directly if it's still not available
-                console.error("Timeout reached. WebApp still not ready or user data missing.");
-                if (isMounted) {
-                    setError("Telegram WebApp initialization timed out or user data unavailable. Please try again.");
-                    setIsLoading(false);
-                }
+    // Set a total timeout after which we give up
+    timeoutId = setTimeout(() => {
+        if (!((window as TelegramWindow).Telegram?.WebApp?.initDataUnsafe?.user)) {
+            console.error("Timeout reached. WebApp still not ready or user data missing.");
+            if (isMounted) {
+                setError("Telegram WebApp initialization timed out or user data unavailable. Please try again.");
+                setIsLoading(false);
             }
-        }, 5000); // Increased timeout to 5 seconds for more robustness
-    } else {
-        // Server-side render, handle immediately
-        console.log("Server-side render: window is undefined. Setting initial error.");
-        if (isMounted) {
-            setError("This app must be opened in a browser with Telegram WebApp support.");
-            setIsLoading(false);
         }
-    }
+        if (intervalId) clearInterval(intervalId); // Clear interval after timeout
+    }, 5000); // 5 seconds timeout
 
     return () => {
       isMounted = false;
